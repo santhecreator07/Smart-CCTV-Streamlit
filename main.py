@@ -65,6 +65,7 @@ class CCTVVideoProcessor(VideoProcessorBase):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+        has_intruder = False
 
         for (x, y, w, h) in faces:
             roi_gray = gray[y:y+h, x:x+w]
@@ -81,11 +82,21 @@ class CCTVVideoProcessor(VideoProcessorBase):
                         name = self.names_map.get(label_id, "PENYUSUP")
                         color = (0, 255, 0)  # Hijau jika aman
                         display_text = f"{name} ({similarity}%)"
+                    else:
+                        has_intruder = True
                 except:
-                    pass
+                    has_intruder = True
+            else:
+                has_intruder = True
 
             cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
             cv2.putText(img, display_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+        # Jika terdeteksi penyusup, simpan statusnya ke dalam session state agar browser tahu
+        if has_intruder:
+            st.session_state["intruder_detected"] = True
+        else:
+            st.session_state["intruder_detected"] = False
 
         return frame.from_ndarray(img, format="bgr24")
 
@@ -93,14 +104,30 @@ class CCTVVideoProcessor(VideoProcessorBase):
 st.set_page_config(page_title="Smart CCTV Live Web", layout="centered")
 st.title("SISTEM KEAMANAN - LIVE MONITORING")
 
+if "intruder_detected" not in st.session_state:
+    st.session_state["intruder_detected"] = False
+
 menu = st.sidebar.selectbox("Pilih Menu", ["Monitoring Live CCTV", "Daftarkan Wajah Baru"])
 
 if menu == "Monitoring Live CCTV":
     st.subheader("Live Feed Kamera Pengawas")
     st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan kemiripan database secara real-time.")
 
+    # Komponen Audio Web HTML5 (Memutar suara beeper secara online di sisi browser)
+    sound_placeholder = st.empty()
+    if st.session_state["intruder_detected"]:
+        # Trik menyisipkan audio beeper otomatis via HTML browser
+        sound_html = """
+            <audio autoplay loop hidden>
+            <source src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" type="audio/ogg">
+            </audio>
+        """
+        sound_placeholder.markdown(sound_html, unsafe_allow_html=True)
+    else:
+        sound_placeholder.empty()
+
     ctx = webrtc_streamer(
-        key="cctv-web-cloud",
+        key="cctv-web-cloud-v2",
         video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
         media_stream_constraints={
             "video": {"width": 640, "height": 480, "frameRate": 15},
