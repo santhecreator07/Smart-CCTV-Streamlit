@@ -92,7 +92,7 @@ class CCTVVideoProcessor(VideoProcessorBase):
             cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
             cv2.putText(img, display_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        # Jika terdeteksi penyusup, simpan statusnya ke dalam session state agar browser tahu
+        # Kirim sinyal intruder langsung ke session state global
         if has_intruder:
             st.session_state["intruder_detected"] = True
         else:
@@ -113,21 +113,35 @@ if menu == "Monitoring Live CCTV":
     st.subheader("Live Feed Kamera Pengawas")
     st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan kemiripan database secara real-time.")
 
-    # Komponen Audio Web HTML5 (Memutar suara beeper secara online di sisi browser)
+    # INJEKSI JAVASCRIPT WEB AUDIO API (Bip Sintetis Internal Browser)
     sound_placeholder = st.empty()
     if st.session_state["intruder_detected"]:
-        # Trik menyisipkan audio beeper otomatis via HTML browser
-        sound_html = """
-            <audio autoplay loop hidden>
-            <source src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" type="audio/ogg">
-            </audio>
+        # Kode JS ini akan membuat oscilator suara bip melengking 1800Hz tanpa butuh file eksternal
+        js_sound = """
+            <script>
+            if (typeof audioCtx === 'undefined') {
+                var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            function playBeep() {
+                var oscillator = audioCtx.createOscillator();
+                var gainNode = audioCtx.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 1800; // Frekuensi suara melengking
+                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Volume 50%
+                oscillator.start();
+                setTimeout(function(){ oscillator.stop(); }, 150); // Durasi bip 150 milidetik
+            }
+            playBeep();
+            </script>
         """
-        sound_placeholder.markdown(sound_html, unsafe_allow_html=True)
+        sound_placeholder.markdown(js_sound, unsafe_allow_html=True)
     else:
         sound_placeholder.empty()
 
     ctx = webrtc_streamer(
-        key="cctv-web-cloud-v2",
+        key="cctv-web-cloud-v3",
         video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
         media_stream_constraints={
             "video": {"width": 640, "height": 480, "frameRate": 15},
