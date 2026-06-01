@@ -166,3 +166,13 @@ elif menu == "Daftarkan Wajah Baru":
             path_simpan = os.path.join(KNOWN_FACE_DIR, f"{nama_baru}.jpg")
             cv2.imwrite(path_simpan, frame)
             st.success(f"Berhasil disimpan! Silakan klik menu Monitoring kembali.")
+if menu == "Monitoring Live CCTV":
+    st.subheader("Live Feed Kamera Pengawas")
+    
+    # 1. Tambahkan tombol "Jalankan Alarm"
+    if st.button("🔊 Klik Untuk Mengaktifkan Suara Alarm"):
+        st.session_state["audio_enabled"] = True
+    
+    # 2. Hanya mainkan suara JIKA tombol sudah diklik (Ini cara satu-satunya agar browser mengizinkan)
+    if st.session_state.get("audio_enabled") and CCTVVideoProcessor.intruder_flag:
+        st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
