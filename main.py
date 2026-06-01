@@ -57,6 +57,9 @@ NAMES_MAP = train_known_faces()
 
 # --- 3. ENGINE MONITORING VIDEO ---
 class CCTVVideoProcessor(VideoProcessorBase):
+    # Jembatan data statis global agar bisa dibaca lintas thread
+    intruder_flag = False
+
     def __init__(self, names_map):
         self.names_map = names_map
 
@@ -92,11 +95,8 @@ class CCTVVideoProcessor(VideoProcessorBase):
             cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
             cv2.putText(img, display_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        # Kirim sinyal intruder langsung ke session state global
-        if has_intruder:
-            st.session_state["intruder_detected"] = True
-        else:
-            st.session_state["intruder_detected"] = False
+        # Ubah nilai variabel kelas langsung saat thread video berjalan
+        CCTVVideoProcessor.intruder_flag = has_intruder
 
         return frame.from_ndarray(img, format="bgr24")
 
@@ -104,44 +104,18 @@ class CCTVVideoProcessor(VideoProcessorBase):
 st.set_page_config(page_title="Smart CCTV Live Web", layout="centered")
 st.title("SISTEM KEAMANAN - LIVE MONITORING")
 
-if "intruder_detected" not in st.session_state:
-    st.session_state["intruder_detected"] = False
-
 menu = st.sidebar.selectbox("Pilih Menu", ["Monitoring Live CCTV", "Daftarkan Wajah Baru"])
 
 if menu == "Monitoring Live CCTV":
     st.subheader("Live Feed Kamera Pengawas")
     st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan kemiripan database secara real-time.")
 
-    # INJEKSI JAVASCRIPT WEB AUDIO API (Bip Sintetis Internal Browser)
+    # Wadah untuk menyisipkan pemutar suara audio
     sound_placeholder = st.empty()
-    if st.session_state["intruder_detected"]:
-        # Kode JS ini akan membuat oscilator suara bip melengking 1800Hz tanpa butuh file eksternal
-        js_sound = """
-            <script>
-            if (typeof audioCtx === 'undefined') {
-                var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            function playBeep() {
-                var oscillator = audioCtx.createOscillator();
-                var gainNode = audioCtx.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-                oscillator.type = 'sine';
-                oscillator.frequency.value = 1800; // Frekuensi suara melengking
-                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Volume 50%
-                oscillator.start();
-                setTimeout(function(){ oscillator.stop(); }, 150); // Durasi bip 150 milidetik
-            }
-            playBeep();
-            </script>
-        """
-        sound_placeholder.markdown(js_sound, unsafe_allow_html=True)
-    else:
-        sound_placeholder.empty()
 
+    # Jalankan komponen video streaming
     ctx = webrtc_streamer(
-        key="cctv-web-cloud-v3",
+        key="cctv-web-cloud-v4",
         video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
         media_stream_constraints={
             "video": {"width": 640, "height": 480, "frameRate": 15},
@@ -151,6 +125,31 @@ if menu == "Monitoring Live CCTV":
             "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
         }
     )
+
+    # LOOPING UTAMA: Selama kamera aktif, cek status penyusup secara konstan
+    if ctx.state.playing:
+        while True:
+            # Baca variabel kelas secara real-time dari background thread video
+            if CCTVVideoProcessor.intruder_flag:
+                js_sound = """
+                    <script>
+                    if (typeof audioCtx === 'undefined') {
+                        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    var oscillator = audioCtx.createOscillator();
+                    var gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    oscillator.type = 'sine';
+                    oscillator.frequency.value = 1600; 
+                    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
+                    oscillator.start();
+                    setTimeout(function(){ oscillator.stop(); }, 120); 
+                    </script>
+                """
+                sound_placeholder.markdown(js_sound, unsafe_allow_html=True)
+            else:
+                sound_placeholder.empty()
 
 elif menu == "Daftarkan Wajah Baru":
     st.subheader("Registrasi Pemilik Wajah Baru")
