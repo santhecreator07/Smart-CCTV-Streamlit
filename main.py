@@ -57,7 +57,6 @@ NAMES_MAP = train_known_faces()
 
 # --- 3. ENGINE MONITORING VIDEO ---
 class CCTVVideoProcessor(VideoProcessorBase):
-    # Jembatan data statis global agar bisa dibaca lintas thread
     intruder_flag = False
 
     def __init__(self, names_map):
@@ -95,7 +94,7 @@ class CCTVVideoProcessor(VideoProcessorBase):
             cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
             cv2.putText(img, display_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-        # Ubah nilai variabel kelas langsung saat thread video berjalan
+        # Update status global
         CCTVVideoProcessor.intruder_flag = has_intruder
 
         return frame.from_ndarray(img, format="bgr24")
@@ -108,14 +107,12 @@ menu = st.sidebar.selectbox("Pilih Menu", ["Monitoring Live CCTV", "Daftarkan Wa
 
 if menu == "Monitoring Live CCTV":
     st.subheader("Live Feed Kamera Pengawas")
-    st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan kemiripan database secara real-time.")
-
-    # Wadah untuk menyisipkan pemutar suara audio
+    
+    # Elemen placeholder audio diletakkan di paling atas halaman web utama
     sound_placeholder = st.empty()
 
-    # Jalankan komponen video streaming
     ctx = webrtc_streamer(
-        key="cctv-web-cloud-v4",
+        key="cctv-final-cloud",
         video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
         media_stream_constraints={
             "video": {"width": 640, "height": 480, "frameRate": 15},
@@ -126,29 +123,26 @@ if menu == "Monitoring Live CCTV":
         }
     )
 
-    # LOOPING UTAMA: Selama kamera aktif, cek status penyusup secara konstan
+    # Indikator Status di Web Utama
+    status_placeholder = st.empty()
+
+    # Selama kamera streaming aktif, dengarkan perubahan variabel kelas secara konstan
     if ctx.state.playing:
         while True:
-            # Baca variabel kelas secara real-time dari background thread video
             if CCTVVideoProcessor.intruder_flag:
-                js_sound = """
-                    <script>
-                    if (typeof audioCtx === 'undefined') {
-                        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-                    var oscillator = audioCtx.createOscillator();
-                    var gainNode = audioCtx.createGain();
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioCtx.destination);
-                    oscillator.type = 'sine';
-                    oscillator.frequency.value = 1600; 
-                    gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); 
-                    oscillator.start();
-                    setTimeout(function(){ oscillator.stop(); }, 120); 
-                    </script>
-                """
-                sound_placeholder.markdown(js_sound, unsafe_allow_html=True)
+                status_placeholder.error("🚨 PERINGATAN: TERDETEKSI PENYUSUP DI AREA MONITORING!")
+                # Langsung suntikkan elemen audio murni ke HTML browser tanpa nunggu siklus rerun
+                sound_placeholder.markdown(
+                    """
+                    <iframe src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" allow="autoplay" style="display:none" id="iframeAudio"></iframe>
+                    <audio autoplay loop hidden>
+                        <source src="https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg" type="audio/ogg">
+                    </audio>
+                    """, 
+                    unsafe_allow_html=True
+                )
             else:
+                status_placeholder.success("✅ Situasi Aman. Tidak ada penyusup terdeteksi.")
                 sound_placeholder.empty()
 
 elif menu == "Daftarkan Wajah Baru":
