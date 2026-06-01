@@ -102,67 +102,40 @@ menu = st.sidebar.selectbox("Pilih Menu", ["Monitoring Live CCTV", "Daftarkan Wa
 
 if menu == "Monitoring Live CCTV":
     st.subheader("Live Feed Kamera Pengawas")
-    st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan database secara real-time.")
+    st.write("Sistem mendeteksi pergerakan wajah dan mencocokkan kemiripan database secara real-time.")
 
-    # INJEKSI JAVASCRIPT: Membuat fungsi audio global di browser yang memantau DOM secara mandiri
+    # TOMBOL PEMANCING SUARA (Trik Bypass Kebijakan Keamanan Browser)
+    st.warning("⚠️ KLIK TOMBOL DI BAWAH INI SATU KALI SEBELUM MEMULAI KAMERA AGAR ALARM BISA BERBUNYI!")
+    tombol_aktif = st.button("🔊 Aktifkan Sistem Audio Alarm")
+
+    # Injeksi Pemutar Suara Konstan berbasis HTML5 Audio dengan Audio Context Generator murni
     st.components.v1.html(
         """
+        <div style="background-color: #f1f3f4; padding: 10px; border-radius: 5px; text-align: center;">
+            <p style="margin: 0; font-family: sans-serif; font-size: 14px; color: #3c4043;">Status Alarm Browser: <b>Siap Menembak Suara</b></p>
+            <button id="test-btn" onclick="initAudio()" style="margin-top: 5px; padding: 5px 10px; border: none; background: #1a73e8; color: white; border-radius: 4px; cursor: pointer;">Tes Koneksi Suara Browser</button>
+        </div>
+
         <script>
-        // Sediakan audio konteks browser
-        var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        function playBeep() {
-            var oscillator = audioCtx.createOscillator();
-            var gainNode = audioCtx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.type = 'sine';
-            oscillator.frequency.value = 1500; // Frekuensi suara alarm
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); 
-            oscillator.start();
-            setTimeout(function(){ oscillator.stop(); }, 100); 
-        }
+        var audioCtx = null;
 
-        // Jalankan pemantau teks halaman web setiap 300ms (Sangat Ringan)
-        setInterval(function() {
-            // Cari apakah di layar monitor ada teks bertuliskan PENYUSUP
-            var pageText = window.parent.document.body.innerText;
-            if (pageText.includes("PENYUSUP")) {
-                playBeep();
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
-        }, 300);
-        </script>
-        """,
-        height=0
-    )
-
-    ctx = webrtc_streamer(
-        key="cctv-ultimate-cloud",
-        video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
-        media_stream_constraints={
-            "video": {"width": 640, "height": 480, "frameRate": 15},
-            "audio": False
-        },
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+            // Bunyi tes konfirmasi klik berhasil
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.frequency.value = 1000;
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
         }
-    )
 
-elif menu == "Daftarkan Wajah Baru":
-    st.subheader("Registrasi Pemilik Wajah Baru")
-    nama_baru = st.text_input("Masukkan Nama Pemilik Wajah:")
-    upload_foto = st.camera_input("Ambil Foto Lewat Kamera")
-
-    if st.button("Simpan ke Database") and nama_baru and upload_foto:
-        file_bytes = np.asarray(bytearray(upload_foto.read()), dtype=np.uint8)
-        frame = cv2.imdecode(file_bytes, 1)
-        
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces_detected = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5)
-        
-        if len(faces_detected) == 0:
-            st.warning("Wajah tidak terdeteksi dengan jelas. Coba lagi.")
-        else:
-            path_simpan = os.path.join(KNOWN_FACE_DIR, f"{nama_baru}.jpg")
-            cv2.imwrite(path_simpan, frame)
-            st.success(f"Berhasil disimpan! Silakan klik menu Monitoring kembali.")
+        // Loop independen di sisi klien: Memaksa bunyi jika ada elemen gambar canvas/video aktif dari WebRTC
+        setInterval(function() {
+            if (audioCtx) {
+                // Mencari elemen video streaming dari webrtc yang sedang aktif di halaman induk
+                var frames = window.parent.document
