@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import streamlit as st
 import urllib.request
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
 # --- 1. DOWNLOAD CASCADE DETECTOR ---
 CASCADE_FILE = "haarcascade_frontalface_default.xml"
@@ -48,17 +48,25 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
+# --- KONFIGURASI WebRTC (STUN SERVER) ---
+# Wajib agar WebRTC bisa berjalan lancar di server cloud / hosting publik
+RTC_CONFIGURATION = RTCConfiguration(
+    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+)
+
 # --- 3. ENGINE MONITORING VIDEO ---
 class CCTVVideoProcessor(VideoProcessorBase):
     def __init__(self, names_map):
         self.names_map = names_map
+        # Menggunakan properti internal class, BUKAN session_state agar aman dari crash
+        self.has_intruder = False 
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
         
-        has_intruder = False
+        self.has_intruder = False
         for (x, y, w, h) in faces:
             roi_gray = gray[y:y+h, x:x+w]
             name = "PENYUSUP"
@@ -71,39 +79,49 @@ class CCTVVideoProcessor(VideoProcessorBase):
                         name = self.names_map.get(label_id, "PENYUSUP")
                         color = (0, 255, 0)
                     else:
-                        has_intruder = True
+                        self.has_intruder = True
                 except:
-                    has_intruder = True
+                    self.has_intruder = True
             else:
-                has_intruder = True
+                self.has_intruder = True
             
             cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
             cv2.putText(img, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         
-        # Simpan status ke session state agar bisa dibaca di luar class
-        st.session_state["intruder_detected"] = has_intruder
         return frame.from_ndarray(img, format="bgr24")
 
 # --- 4. INTERFACE WEB STREAMLIT ---
 st.set_page_config(page_title="Smart CCTV", layout="centered")
 st.title("SISTEM KEAMANAN CCTV")
 
-if "intruder_detected" not in st.session_state: st.session_state["intruder_detected"] = False
-if "audio_enabled" not in st.session_state: st.session_state["audio_enabled"] = False
+if "audio_enabled" not in st.session_state: 
+    st.session_state["audio_enabled"] = False
 
 menu = st.sidebar.selectbox("Menu", ["Monitoring Live CCTV", "Daftarkan Wajah Baru"])
 
 if menu == "Monitoring Live CCTV":
-    if st.button("🔊 Klik Untuk Mengaktifkan Suara Alarm"):
-        st.session_state["audio_enabled"] = True
-    
-    webrtc_streamer(key="cctv", video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP))
+    if not st.session_state["audio_enabled"]:
+        if st.button("🔊 Klik Untuk Mengaktifkan Suara Alarm"):
+            st.session_state["audio_enabled"] = True
+            st.rerun()
+    else:
+        st.success("🔊 Suara alarm aktif!")
 
-    if st.session_state.get("intruder_detected"):
-        st.error("🚨 PENYUSUP TERDETEKSI!")
-        if st.session_state.get("audio_enabled"):
-            st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
+    # Memanggil streamer dengan konfigurasi RTC dan menyimpan konteksnya
+    ctx = webrtc_streamer(
+        key="cctv", 
+        rtc_configuration=RTC_CONFIGURATION,
+        video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
+        media_stream_constraints={"video": True, "audio": False}, # Mematikan mic agar tidak feedback sound
+    )
+
+    # Cara aman membaca status deteksi dari video processor thread ke UI utama
+    if ctx.video_processor:
+        if ctx.video_processor.has_intruder:
+            st.error("🚨 PENYUSUP TERDETEKSI!")
+            if st.session_state.get("audio_enabled"):
+                st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
 
 elif menu == "Daftarkan Wajah Baru":
     # (Kode registrasi kamu tetap sama di sini)
-    pass
+    st.info("Halaman pendaftaran wajah baru.")
