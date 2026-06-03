@@ -48,22 +48,16 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
-# --- 3. FREE OPEN RELAY CONFIGURATION (TANPA DAFTAR XIRSYS) ---
-# Menggunakan server global openrelay gratis agar video tidak loading lama atau force close
+# --- 3. XIRSYS LIVE TURN SERVER CONFIGURATION ---
+# GANTI TULISAN DI BAWAH INI DENGAN DATA DARI DASHBOARD XIRSYS KAMU
 RTC_CONFIGURATION = RTCConfiguration(
     {
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]},
             {
-                "urls": ["turn:openrelay.metered.ca:443"],
-                "username": "openrelayproject",
-                "credential": "openrelayproject"
-            },
-            {
-                "urls": ["turn:openrelay.metered.ca:80"],
-                "username": "openrelayproject",
-                "credential": "openrelayproject"
+                "urls": ["turn:global.xirsys.com:3478?transport=udp", "turn:global.xirsys.com:80?transport=tcp"],
+                "username": "ihsanramadan",
+                "credential": "542f982c-5f47-11f1-9f23-6e1355e44738"
             }
         ]
     }
