@@ -48,17 +48,24 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
-# --- KONFIGURASI WebRTC (STUN SERVER) ---
-# Wajib agar WebRTC bisa berjalan lancar di server cloud / hosting publik
+# --- 3. MULTI-STUN SERVER CONFIGURATION ---
+# Menyediakan banyak jalur koneksi agar WebRTC tidak memantul/mati sendiri di jaringan publik
 RTC_CONFIGURATION = RTCConfiguration(
-    {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    {
+        "iceServers": [
+            {"urls": ["stun:stun.l.google.com:19302"]},
+            {"urls": ["stun:stun1.l.google.com:19302"]},
+            {"urls": ["stun:stun2.l.google.com:19302"]},
+            {"urls": ["stun:stun.services.mozilla.com"]},
+        ]
+    }
 )
 
-# --- 3. ENGINE MONITORING VIDEO ---
+# --- 4. ENGINE MONITORING VIDEO ---
 class CCTVVideoProcessor(VideoProcessorBase):
     def __init__(self, names_map):
         self.names_map = names_map
-        # Menggunakan properti internal class, BUKAN session_state agar aman dari crash
+        # Variabel penanda internal, aman dari crash threading
         self.has_intruder = False 
 
     def recv(self, frame):
@@ -76,52 +83,4 @@ class CCTVVideoProcessor(VideoProcessorBase):
                 try:
                     label_id, confidence = recognizer.predict(roi_gray)
                     if confidence < 90:
-                        name = self.names_map.get(label_id, "PENYUSUP")
-                        color = (0, 255, 0)
-                    else:
-                        self.has_intruder = True
-                except:
-                    self.has_intruder = True
-            else:
-                self.has_intruder = True
-            
-            cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
-            cv2.putText(img, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        
-        return frame.from_ndarray(img, format="bgr24")
-
-# --- 4. INTERFACE WEB STREAMLIT ---
-st.set_page_config(page_title="Smart CCTV", layout="centered")
-st.title("SISTEM KEAMANAN CCTV")
-
-if "audio_enabled" not in st.session_state: 
-    st.session_state["audio_enabled"] = False
-
-menu = st.sidebar.selectbox("Menu", ["Monitoring Live CCTV", "Daftarkan Wajah Baru"])
-
-if menu == "Monitoring Live CCTV":
-    if not st.session_state["audio_enabled"]:
-        if st.button("🔊 Klik Untuk Mengaktifkan Suara Alarm"):
-            st.session_state["audio_enabled"] = True
-            st.rerun()
-    else:
-        st.success("🔊 Suara alarm aktif!")
-
-    # Memanggil streamer dengan konfigurasi RTC dan menyimpan konteksnya
-    ctx = webrtc_streamer(
-        key="cctv", 
-        rtc_configuration=RTC_CONFIGURATION,
-        video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
-        media_stream_constraints={"video": True, "audio": False}, # Mematikan mic agar tidak feedback sound
-    )
-
-    # Cara aman membaca status deteksi dari video processor thread ke UI utama
-    if ctx.video_processor:
-        if ctx.video_processor.has_intruder:
-            st.error("🚨 PENYUSUP TERDETEKSI!")
-            if st.session_state.get("audio_enabled"):
-                st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
-
-elif menu == "Daftarkan Wajah Baru":
-    # (Kode registrasi kamu tetap sama di sini)
-    st.info("Halaman pendaftaran wajah baru.")
+                        name = self.names_map.get(label_id, "PENY
