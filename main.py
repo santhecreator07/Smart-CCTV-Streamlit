@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import streamlit as st
 import urllib.request
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
 
 # --- 1. DOWNLOAD CASCADE DETECTOR ---
 CASCADE_FILE = "haarcascade_frontalface_default.xml"
@@ -48,54 +47,7 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
-# --- 3. MULTI-STUN SERVER CONFIGURATION ---
-RTC_CONFIGURATION = RTCConfiguration(
-    {
-        "iceServers": [
-            {"urls": ["stun:stun.l.google.com:19302"]},
-            {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]},
-            {"urls": ["stun:stun.services.mozilla.com"]},
-        ]
-    }
-)
-
-# --- 4. ENGINE MONITORING VIDEO ---
-class CCTVVideoProcessor(VideoProcessorBase):
-    def __init__(self, names_map):
-        self.names_map = names_map
-        self.has_intruder = False 
-
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
-        
-        self.has_intruder = False
-        for (x, y, w, h) in faces:
-            roi_gray = gray[y:y+h, x:x+w]
-            name = "PENYUSUP"
-            color = (0, 0, 255)
-            
-            if len(self.names_map) > 0:
-                try:
-                    label_id, confidence = recognizer.predict(roi_gray)
-                    if confidence < 90:
-                        name = self.names_map.get(label_id, "PENYUSUP")
-                        color = (0, 255, 0)
-                    else:
-                        self.has_intruder = True
-                except:
-                    self.has_intruder = True
-            else:
-                self.has_intruder = True
-            
-            cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
-            cv2.putText(img, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        
-        return frame.from_ndarray(img, format="bgr24")
-
-# --- 5. INTERFACE WEB STREAMLIT ---
+# --- 3. INTERFACE WEB STREAMLIT ---
 st.set_page_config(page_title="Smart CCTV", layout="centered")
 st.title("SISTEM KEAMANAN CCTV")
 
@@ -112,15 +64,44 @@ if menu == "Monitoring Live CCTV":
     else:
         st.success("🔊 Suara alarm aktif!")
 
-    ctx = webrtc_streamer(
-        key="cctv", 
-        rtc_configuration=RTC_CONFIGURATION,
-        video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
-        media_stream_constraints={"video": True, "audio": False},
-    )
+    # Menggunakan camera_input bawaan Streamlit yang jauh lebih stabil di server cloud
+    img_file = st.camera_input("Nyalakan Kamera CCTV")
 
-    if ctx.video_processor:
-        if ctx.video_processor.has_intruder:
+    if img_file is not None:
+        # Konversi gambar dari browser ke format OpenCV (BGR)
+        file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(50, 50))
+        has_intruder = False
+        
+        for (x, y, w, h) in faces:
+            roi_gray = gray[y:y+h, x:x+w]
+            name = "PENYUSUP"
+            color = (0, 0, 255)
+            
+            if len(NAMES_MAP) > 0:
+                try:
+                    label_id, confidence = recognizer.predict(roi_gray)
+                    if confidence < 90:
+                        name = NAMES_MAP.get(label_id, "PENYUSUP")
+                        color = (0, 255, 0)
+                    else:
+                        has_intruder = True
+                except:
+                    has_intruder = True
+            else:
+                has_intruder = True
+            
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
+            cv2.putText(img, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        
+        # Tampilkan hasil pemrosesan CCTV ke layar
+        st.image(img, channels="BGR", caption="Live Monitoring Hasil Deteksi")
+
+        # Bunyikan alarm jika terdeteksi penyusup
+        if has_intruder:
             st.error("🚨 PENYUSUP TERDETEKSI!")
             if st.session_state.get("audio_enabled"):
                 st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
