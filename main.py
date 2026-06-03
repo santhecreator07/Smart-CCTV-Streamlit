@@ -48,8 +48,8 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
-# --- 3. ALTERNATIF TWILIO: METERED FREE OPEN RELAY CONFIGURATION ---
-# Konfigurasi ini menggunakan TURN server publik gratis agar video tidak force close
+# --- 3. FREE OPEN RELAY CONFIGURATION (TANPA DAFTAR XIRSYS) ---
+# Menggunakan server global openrelay gratis agar video tidak loading lama atau force close
 RTC_CONFIGURATION = RTCConfiguration(
     {
         "iceServers": [
