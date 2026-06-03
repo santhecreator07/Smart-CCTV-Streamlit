@@ -49,7 +49,6 @@ def train_known_faces():
 NAMES_MAP = train_known_faces()
 
 # --- 3. MULTI-STUN SERVER CONFIGURATION ---
-# Menyediakan banyak jalur koneksi agar WebRTC tidak memantul/mati sendiri di jaringan publik
 RTC_CONFIGURATION = RTCConfiguration(
     {
         "iceServers": [
@@ -65,7 +64,6 @@ RTC_CONFIGURATION = RTCConfiguration(
 class CCTVVideoProcessor(VideoProcessorBase):
     def __init__(self, names_map):
         self.names_map = names_map
-        # Variabel penanda internal, aman dari crash threading
         self.has_intruder = False 
 
     def recv(self, frame):
@@ -83,4 +81,64 @@ class CCTVVideoProcessor(VideoProcessorBase):
                 try:
                     label_id, confidence = recognizer.predict(roi_gray)
                     if confidence < 90:
-                        name = self.names_map.get(label_id, "PENY
+                        name = self.names_map.get(label_id, "PENYUSUP")
+                        color = (0, 255, 0)
+                    else:
+                        self.has_intruder = True
+                except:
+                    self.has_intruder = True
+            else:
+                self.has_intruder = True
+            
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 3)
+            cv2.putText(img, name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        
+        return frame.from_ndarray(img, format="bgr24")
+
+# --- 5. INTERFACE WEB STREAMLIT ---
+st.set_page_config(page_title="Smart CCTV", layout="centered")
+st.title("SISTEM KEAMANAN CCTV")
+
+if "audio_enabled" not in st.session_state: 
+    st.session_state["audio_enabled"] = False
+
+menu = st.sidebar.selectbox("Menu", ["Monitoring Live CCTV", "Daftarkan Wajah Baru"])
+
+if menu == "Monitoring Live CCTV":
+    if not st.session_state["audio_enabled"]:
+        if st.button("🔊 Klik Untuk Mengaktifkan Suara Alarm"):
+            st.session_state["audio_enabled"] = True
+            st.rerun()
+    else:
+        st.success("🔊 Suara alarm aktif!")
+
+    ctx = webrtc_streamer(
+        key="cctv", 
+        rtc_configuration=RTC_CONFIGURATION,
+        video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
+        media_stream_constraints={"video": True, "audio": False},
+    )
+
+    if ctx.video_processor:
+        if ctx.video_processor.has_intruder:
+            st.error("🚨 PENYUSUP TERDETEKSI!")
+            if st.session_state.get("audio_enabled"):
+                st.audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg", autoplay=True)
+
+elif menu == "Daftarkan Wajah Baru":
+    st.header("Form Pendaftaran Wajah Baru")
+    new_name = st.text_input("Masukkan Nama Lengkap:")
+    img_file = st.camera_input("Ambil Foto Wajah")
+    
+    if img_file is not None and new_name:
+        file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
+        opencv_img = cv2.imdecode(file_bytes, 1)
+        
+        if st.button(f"Simpan Wajah {new_name}"):
+            file_path = os.path.join(KNOWN_FACE_DIR, f"{new_name.strip().replace(' ', '_')}.jpg")
+            cv2.imwrite(file_path, opencv_img)
+            st.success(f"Berhasil mendaftarkan wajah: {new_name}!")
+            NAMES_MAP = train_known_faces()
+            st.rerun()
+    elif img_file and not new_name:
+        st.warning("Silakan isi nama terlebih dahulu sebelum mengambil foto.")
