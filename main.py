@@ -48,20 +48,28 @@ def train_known_faces():
 
 NAMES_MAP = train_known_faces()
 
-# --- 3. MULTI-STUN SERVER CONFIGURATION ---
-# Wajib di lingkungan hosting cloud agar WebRTC tidak memantul / putus
+# --- 3. ALTERNATIF TWILIO: METERED FREE OPEN RELAY CONFIGURATION ---
+# Konfigurasi ini menggunakan TURN server publik gratis agar video tidak force close
 RTC_CONFIGURATION = RTCConfiguration(
     {
         "iceServers": [
             {"urls": ["stun:stun.l.google.com:19302"]},
             {"urls": ["stun:stun1.l.google.com:19302"]},
-            {"urls": ["stun:stun2.l.google.com:19302"]},
-            {"urls": ["stun:stun.services.mozilla.com"]},
+            {
+                "urls": ["turn:openrelay.metered.ca:443"],
+                "username": "openrelayproject",
+                "credential": "openrelayproject"
+            },
+            {
+                "urls": ["turn:openrelay.metered.ca:80"],
+                "username": "openrelayproject",
+                "credential": "openrelayproject"
+            }
         ]
     }
 )
 
-# --- 4. ENGINE MONITORING VIDEO (LIVE STREAM) ---
+# --- 4. ENGINE MONITORING VIDEO ---
 class CCTVVideoProcessor(VideoProcessorBase):
     def __init__(self, names_map):
         self.names_map = names_map
@@ -113,15 +121,13 @@ if menu == "Monitoring Live CCTV":
     else:
         st.success("🔊 Suara alarm aktif!")
 
-    # Membuka penstriman video live WebRTC
     ctx = webrtc_streamer(
         key="cctv", 
         rtc_configuration=RTC_CONFIGURATION,
         video_processor_factory=lambda: CCTVVideoProcessor(NAMES_MAP),
-        media_stream_constraints={"video": True, "audio": False}, # Menonaktifkan mikrofon browser
+        media_stream_constraints={"video": True, "audio": False},
     )
 
-    # Memeriksa deteksi penyusup langsung dari alur video yang berjalan
     if ctx.video_processor:
         if ctx.video_processor.has_intruder:
             st.error("🚨 PENYUSUP TERDETEKSI!")
@@ -131,7 +137,7 @@ if menu == "Monitoring Live CCTV":
 elif menu == "Daftarkan Wajah Baru":
     st.header("Form Pendaftaran Wajah Baru")
     new_name = st.text_input("Masukkan Nama Lengkap:")
-    img_file = st.camera_input("Ambil Foto Wajah") # Snapshot khusus registrasi wajah baru
+    img_file = st.camera_input("Ambil Foto Wajah")
     
     if img_file is not None and new_name:
         file_bytes = np.asarray(bytearray(img_file.read()), dtype=np.uint8)
